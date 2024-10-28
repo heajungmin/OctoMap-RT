@@ -1,33 +1,40 @@
 /*
- * OctoMap-RT: Fast Probabilistic Volumetric Mapping Using Ray-Tracing GPUs
- * http://graphics.ewha.ac.kr/octomap-rt/
- *  
- * Copyright(c) 2024, Heajung Min, Kyung Min Han, and Young J. Kim, Ewha Womans University
- * All rights reserved.
+ * Copyright 2024 The Ewha Womans University.
+ * All Rights Reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met :
+ * Permission to use, copy, modify OR distribute this software and its
+ * documentation for educational, research, and non-profit purposes, without
+ * fee, and without a written agreement is hereby granted, provided that the
+ * above copyright notice and the following three paragraphs appear in all
+ * copies.
  *
- *     * Redistributions of source code must retain the above copyright notice, this
- *       list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright notice,
- *       this list of conditions and the following disclaimer in the documentation
- *       and / or other materials provided with the distribution.
- *     * Neither the name of OctoMap-RT nor the names of its
- *       contributors may be used to endorse or promote products derived from
- *       this software without specific prior written permission.
+ * IN NO EVENT SHALL THE EWHA WOMANS UNIVERSITY BE
+ * LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR
+ * CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF THE
+ * USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF THE EWHA WOMANS UNIVERSITY
+ * HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED.IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * THE EWHA WOMANS UNIVERSITY SPECIFICALLY DISCLAIM ANY
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE
+ * PROVIDED HEREUNDER IS ON AN "AS IS" BASIS, AND THE EWHA WOMANS UNIVERSITY
+ * HAS NO OBLIGATIONS TO PROVIDE MAINTENANCE, SUPPORT,
+ * UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
  *
+ *
+ * The authors may be contacted via:
+ *
+ * Mail:        Heajung Min, Kyung Min Han, and Young J. Kim
+ *              Computer Graphics Lab                       
+ *              Department of Computer Science and Engineering
+ *              Ewha Womans University
+ *              11-1 Daehyun-Dong Seodaemun-gu, Seoul, Korea 120-750
+ *
+ * Phone:       +82-2-3277-6798
+ *
+ * EMail:       hjmin@ewha.ac.kr
+ *              hankm@ewha.ac.kr
+ *              kimy@ewha.ac.kr
  */
 
 #include <octomap/octomap_timing.h>
