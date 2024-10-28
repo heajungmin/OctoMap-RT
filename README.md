@@ -37,13 +37,14 @@ make
   link_directories((your_path)/octomap/lib)
   ```
 
-7. Build 
+6. Build 
     ```
     cd (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK
     make
     ```
 
-8. Run
+7. Run
+* [OctoMap dataset](http://ais.informatik.uni-freiburg.de/projects/datasets/octomap/)
     ```
     (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/bin/OctoMap-RT -i geb079_max50m.graph -o map -res 0.1 -max 10.0
     ```
@@ -51,7 +52,7 @@ make
     (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/bin/OctoMap-RT -i fr_campus.graph. -o map -res 0.2 
     ```
 
-9. Visualize the map results such as *.bt or *.ot using [Octovis](https://github.com/OctoMap/octomap).
+8. Visualize the map results such as *.bt or *.ot using [Octovis](https://github.com/OctoMap/octomap).
 
 
 
