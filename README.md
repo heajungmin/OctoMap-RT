@@ -21,17 +21,17 @@ make
 4. Insert the OctoMap-RT into the Optix SDK. You can use the Optix SDK build system.
   * Add a directory for OctoMap-RT in (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/CMakeLists.txt
     ```
-    add_subdirectory(octomapRT)
+    add_subdirectory(OctoMap-RT)
     ```   
   
   * Add the OctoMap-RT code in the Optix SDK directory.
     ```
     cd (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/
-    mv (your_path)/octomapRT .    
+    mv (your_path)/OctoMap-RT .    
     ```
 
 5. Link OctoMap library
-* Check the path for OctoMap library in (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/octomapRT/CMakeLists.txt
+* Check the path for OctoMap library in (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/OctoMap-RT/CMakeLists.txt
   ```
   include_directories((your_path)/octomap/octomap/include)
   link_directories((your_path)/octomap/lib)
@@ -45,10 +45,10 @@ make
 
 8. Run
     ```
-    (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/bin/octomapRT -i geb079_max50m.graph -o map -res 0.1 -max 10.0
+    (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/bin/OctoMap-RT -i geb079_max50m.graph -o map -res 0.1 -max 10.0
     ```
     ```
-    (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/bin/octomapRT -i fr_campus.graph. -o map -res 0.2 
+    (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/bin/OctoMap-RT -i fr_campus.graph. -o map -res 0.2 
     ```
 
 9. Visualize the map results such as *.bt or *.ot using [Octovis](https://github.com/OctoMap/octomap).
