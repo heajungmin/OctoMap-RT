@@ -75,12 +75,3 @@ Please contact 'hjmin@ewha.ac.kr'
 
 ## License
 This project is licensed under the BSD-2-Clause License. See the [LICENSE](LICENSE) file for details.
-
-
-
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
-
-
