@@ -31,7 +31,7 @@
 include_directories((your_path)/octomap/octomap/include)
 link_directories((your_path)/octomap/lib)
 
-OPTIX_add_sample_executable( octomapRT target_name
+OPTIX_add_sample_executable( OctoMap-RT target_name
   octomapRT.cu
   octomapRT.cpp
   octomapRT.h
