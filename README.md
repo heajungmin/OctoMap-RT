@@ -11,7 +11,7 @@ This project is developed based on Ubuntu 20.04, OctoMap 1.10.0, and Optix SDK 8
 
 2. To install Optix SDK, please follow the official instructions in [Optix](https://developer.nvidia.com/designworks/optix/download).
 ```
-cd (your_path)/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK
+cd ~/Downloads/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK
 cmake .
 make
 ```
