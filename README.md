@@ -81,4 +81,4 @@ If you use OctoMap-RT in a scientific publication, please cite our paper.
 Please contact 'hjmin@ewha.ac.kr'
 
 ## License
-This project is licensed under the BSD-2-Clause License. See the [LICENSE](LICENSE) file for details.
+Please see the [LICENSE](LICENSE) file for details.
