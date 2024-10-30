@@ -37,20 +37,19 @@
  *              kimy@ewha.ac.kr
  */
 
+#include "octomapRT.h"
+
 #include <optix.h>
 #include <optix_function_table_definition.h>
-#include <optix_stack_size.h>
 #include <optix_stubs.h>
-
+#include <optix_stack_size.h>
 #include <cuda_runtime.h>
 #include <sampleConfig.h>
 
-#include <sutil/CUDAOutputBuffer.h>
-#include <sutil/Exception.h>
 #include <sutil/sutil.h>
 #include <cuda/whitted.h>
 
-#include "octomapRT.h"
+#include <sutil/CUDAOutputBuffer.h>
 
 using namespace octomap;
 using namespace octomath;
@@ -66,13 +65,76 @@ typedef SbtRecord<RayGenData> RayGenSbtRecord;
 typedef SbtRecord<MissData> MissSbtRecord;
 typedef SbtRecord<HitGroupData> HitGroupSbtRecord;
 
+struct OctoMapRTState {
+    OptixDeviceContext context = 0;
+    OptixTraversableHandle gas_handle = 0;
+    OptixProgramGroup raygen_prog_group = 0;
+    OptixProgramGroup miss_prog_group = 0;
+    OptixProgramGroup hitgroup_prog_group = 0;
+    CUdeviceptr d_gas_output_buffer = 0;
+    OptixPipeline pipeline = 0;
+    OptixModule module = 0;
+    OptixShaderBindingTable sbt = {};
+    OptixPipelineCompileOptions pipeline_compile_options = {};
+
+    CUdeviceptr d_scanBuffer = 0;
+    CUdeviceptr d_scanBuffer_pointID = 0;
+
+    uint* hostData_voxel = 0;    
+    uint numVoxel = 0;
+
+    Params params = {};
+    Map map = {};
+};
+
+std::unique_ptr<sutil::CUDAOutputBuffer<uint>> output_voxel;
+OctoMapRTState state;
+
 static void context_log_cb(unsigned int level, const char *tag, const char *message, void * /*cbdata */)
 {
     std::cerr << "[" << std::setw(2) << level << "][" << std::setw(12) << tag << "]: "
               << message << "\n";
 }
 
-void initAABB(OctoMapRTState &state, ScanGraph *graph, double &res, double maxrange)
+OcTree* OctomapRT::getTree() const {
+    return state.map.tree;
+}
+
+void OctomapRT::sync() {
+    CUDA_SYNC_CHECK();
+}
+
+OctomapRT::OctomapRT(double res, double maxRange, double clampingMin, double clampingMax, double probHit, double probMiss)
+    : res(res), maxRange(maxRange), clampingMin(clampingMin), clampingMax(clampingMax), probHit(probHit), probMiss(probMiss) {    
+    state.map.tree = new octomap::OcTree(res);
+    state.map.tree->setClampingThresMin(clampingMin);
+    state.map.tree->setClampingThresMax(clampingMax);
+    state.map.tree->setProbHit(probHit);
+    state.map.tree->setProbMiss(probMiss);
+}
+
+OctomapRT::~OctomapRT() {    
+}
+
+void OctomapRT::initialize(ScanGraph* graph) {
+    initAABB(graph);
+    initCUDAOptix();
+    bottomLevelAS();
+    topLevelAS();
+    createModule();
+    createProgramGroups();
+    linkPipeline();
+    shaderBindingTable();
+}
+
+void OctomapRT::insertPointCloud(ScanGraph::iterator scan_it) {
+    initScan(scan_it);
+    launch((*scan_it)->scan->size(), 1);
+    readback();
+    treeUpdate(scan_it);
+}
+
+void OctomapRT::initAABB(ScanGraph *graph)
 {
     double res_half = res * 0.5;
     float min_x, min_y, min_z;
@@ -102,8 +164,8 @@ void initAABB(OctoMapRTState &state, ScanGraph *graph, double &res, double maxra
         pose6d voxelizedLocal = pose6d(frame_origin.x() - voxelX, frame_origin.y() - voxelY, frame_origin.z() - voxelZ, frame_origin.roll(), frame_origin.pitch(), frame_origin.yaw());
 
         // adjust point cloud by sensor offset in a voxel
-        if (maxrange > 0) {
-            pointcloud->transform_maxrange(voxelizedLocal, maxrange);
+        if (maxRange > 0) {
+            pointcloud->transform_maxrange(voxelizedLocal, maxRange);
         } else {
             (*scan_it)->scan->transform(voxelizedLocal);
         }
@@ -221,60 +283,27 @@ void initAABB(OctoMapRTState &state, ScanGraph *graph, double &res, double maxra
     state.params.numXxnumY = state.map.numInstance.x * state.map.numInstance.y;
     state.params.aabbNumPerAxis = aabbNumPerAxis;
     state.params.numInstanceX = state.map.numInstance.x;
+    
+    state.numVoxel = (state.map.totalAabb) / 16 + 1;
+    output_voxel = std::unique_ptr<sutil::CUDAOutputBuffer<uint>>(
+    new sutil::CUDAOutputBuffer<uint>(sutil::CUDAOutputBufferType::CUDA_DEVICE, state.numVoxel, 1));
+
 }
 
-void initScan(OctoMapRTState &state, octomap::ScanGraph::iterator &scan_it) {
-    CUDA_CHECK(cudaFree(reinterpret_cast<void *>(state.d_scanBuffer)));
-    CUDA_CHECK(cudaFree(reinterpret_cast<void *>(state.d_scanBuffer_pointID)));
+void OctomapRT::initCUDAOptix() {
+    state.context = nullptr;
 
-    size_t numPointcloud = (*scan_it)->scan->size();
+    CUDA_CHECK(cudaFree(0));
 
-    std::vector<Scan> scanBuffer(numPointcloud);
-    std::vector<Scan_pointID> scanBuffer_pointID(numPointcloud);
-
-    RTPointcloud *pc = static_cast<RTPointcloud *>((*scan_it)->scan);
-
-    for (int i = 0; i < (int)pc->size(); i++) {
-        point3d &p = pc->getPoint(i);
-        OcTreeKey key_point = {0, 0, 0};
-
-        if (state.map.tree->coordToKeyChecked(p.x(), p.y(), p.z(), key_point)) {
-            key_point[0] -= state.map.key_origin[0];
-            key_point[1] -= state.map.key_origin[1];
-            key_point[2] -= state.map.key_origin[2];
-
-            scanBuffer[i] = Scan{p.x(), p.y(), p.z()};
-            scanBuffer_pointID[i] = Scan_pointID{key_point.k[0], key_point.k[1], key_point.k[2]}; 
-        }
-    }
-
-    state.params.cameraPosition = {(*scan_it)->pose.x(), (*scan_it)->pose.y(), (*scan_it)->pose.z()};
-
-    size_t scanBuffer_size = numPointcloud * sizeof(Scan);
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&state.d_scanBuffer), scanBuffer_size));
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&state.d_scanBuffer_pointID), scanBuffer_size));
-
-    CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(state.d_scanBuffer), scanBuffer.data(), scanBuffer_size, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(state.d_scanBuffer_pointID), scanBuffer_pointID.data(), scanBuffer_size, cudaMemcpyHostToDevice));
+    CUcontext cuCtx = 0; // zero means take the current context
+    OPTIX_CHECK(optixInit());
+    OptixDeviceContextOptions options = {};
+    options.logCallbackFunction = &context_log_cb;
+    options.logCallbackLevel = 4;
+    OPTIX_CHECK(optixDeviceContextCreate(cuCtx, &options, &state.context));
 }
 
-void printUsage(char *self) {
-    std::cerr << "USAGE: " << self << " [options]\n\n";
-    std::cerr << "This tool is part of OctoMap and inserts the data of a scan graph\n"
-                 "file (point clouds with poses) into an octree.\n"
-                 "The output is a compact maximum-likelihood binary octree file \n"
-                 "(.bt, bonsai tree) and general octree files (.ot) with the full\n"
-                 "information.\n\n";
-
-    std::cerr << "OPTIONS:\n  -i <InputFile.graph> (required)\n"
-                 "  -o <OutputFile.bt> (required) \n"
-                 "  -res <resolution> (optional, default: 0.1 m)\n"
-                 "\n";
-
-    exit(0);
-}
-
-void bottomLevelAS(OctoMapRTState &state) {
+void OctomapRT::bottomLevelAS() {
     OptixAccelBuildOptions accel_options = {};
     accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
     accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
@@ -361,7 +390,7 @@ void bottomLevelAS(OctoMapRTState &state) {
     }
 }
 
-void topLevelAS(OctoMapRTState &state, double res_half) {
+void OctomapRT::topLevelAS() {    
     OptixTraversableHandle ias_handle = 0; // Traversable handle for instance AS
     CUdeviceptr d_ias_output_buffer = 0;   // Instance AS memory
 
@@ -369,6 +398,7 @@ void topLevelAS(OctoMapRTState &state, double res_half) {
     std::vector<OptixInstance> optix_instances(num_instances);
 
     size_t instance_index = 0;
+    double res_half = res * 0.5;
     float eps = static_cast<float>(res_half);
 
     for (uint z = 0; z < state.map.numInstance.z; z++) {
@@ -448,7 +478,7 @@ void topLevelAS(OctoMapRTState &state, double res_half) {
     CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_instances)));
 }
 
-void createModule(OctoMapRTState &state) {
+void OctomapRT::createModule() {
     OptixModuleCompileOptions module_compile_options = {};
 #if !defined(NDEBUG)
     module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_LEVEL_0;
@@ -458,12 +488,12 @@ void createModule(OctoMapRTState &state) {
     state.pipeline_compile_options.usesMotionBlur = false;
     state.pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
     state.pipeline_compile_options.numPayloadValues = 1;
-    state.pipeline_compile_options.numAttributeValues = whitted::NUM_ATTRIBUTE_VALUES;
+    state.pipeline_compile_options.numAttributeValues = 0;
     state.pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     state.pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
 
-    size_t inputSize = 0;
-    const char *input = sutil::getInputData(OPTIX_SAMPLE_NAME, OPTIX_SAMPLE_DIR, "octomapRT.cu", inputSize);
+    size_t inputSize = 0;    
+    const char *input = sutil::getInputData("octomapRT", "octomapRT", "octomapRT.cu", inputSize);
 
     OPTIX_CHECK_LOG(optixModuleCreate(
         state.context,
@@ -475,7 +505,7 @@ void createModule(OctoMapRTState &state) {
         &state.module));
 }
 
-void createProgramGroups(OctoMapRTState &state) {
+void OctomapRT::createProgramGroups() {
     OptixProgramGroupOptions program_group_options = {}; // Initialize to zeros
 
     OptixProgramGroupDesc raygen_prog_group_desc = {};
@@ -519,7 +549,7 @@ void createProgramGroups(OctoMapRTState &state) {
         &state.hitgroup_prog_group));
 }
 
-void linkPipeline(OctoMapRTState &state) {
+void OctomapRT::linkPipeline() {
     const uint32_t max_trace_depth = 1;
     OptixProgramGroup program_groups[] = {state.raygen_prog_group, state.miss_prog_group, state.hitgroup_prog_group};
 
@@ -553,7 +583,7 @@ void linkPipeline(OctoMapRTState &state) {
                                           ));
 }
 
-void shaderBindingTable(OctoMapRTState &state) {
+void OctomapRT::shaderBindingTable() {
     CUdeviceptr raygen_record;
     size_t raygen_record_size = sizeof(RayGenSbtRecord);
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&raygen_record), raygen_record_size));
@@ -596,25 +626,47 @@ void shaderBindingTable(OctoMapRTState &state) {
     state.sbt.hitgroupRecordCount = 1;
 }
 
-void initCUDAOptix(OctoMapRTState &state) {
-    state.context = nullptr;
+void OctomapRT::initScan(ScanGraph::iterator& scan_it) {
+    CUDA_CHECK(cudaFree(reinterpret_cast<void *>(state.d_scanBuffer)));
+    CUDA_CHECK(cudaFree(reinterpret_cast<void *>(state.d_scanBuffer_pointID)));
 
-    CUDA_CHECK(cudaFree(0));
+    size_t numPointcloud = (*scan_it)->scan->size();
 
-    CUcontext cuCtx = 0; // zero means take the current context
-    OPTIX_CHECK(optixInit());
-    OptixDeviceContextOptions options = {};
-    options.logCallbackFunction = &context_log_cb;
-    options.logCallbackLevel = 4;
-    OPTIX_CHECK(optixDeviceContextCreate(cuCtx, &options, &state.context));
+    std::vector<Scan> scanBuffer(numPointcloud);
+    std::vector<Scan_pointID> scanBuffer_pointID(numPointcloud);
+
+    RTPointcloud *pc = static_cast<RTPointcloud *>((*scan_it)->scan);
+
+    for (int i = 0; i < (int)pc->size(); i++) {
+        point3d &p = pc->getPoint(i);
+        OcTreeKey key_point = {0, 0, 0};
+
+        if (state.map.tree->coordToKeyChecked(p.x(), p.y(), p.z(), key_point)) {
+            key_point[0] -= state.map.key_origin[0];
+            key_point[1] -= state.map.key_origin[1];
+            key_point[2] -= state.map.key_origin[2];
+
+            scanBuffer[i] = Scan{p.x(), p.y(), p.z()};
+            scanBuffer_pointID[i] = Scan_pointID{key_point.k[0], key_point.k[1], key_point.k[2]}; 
+        }
+    }
+
+    state.params.cameraPosition = {(*scan_it)->pose.x(), (*scan_it)->pose.y(), (*scan_it)->pose.z()};
+
+    size_t scanBuffer_size = numPointcloud * sizeof(Scan);
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&state.d_scanBuffer), scanBuffer_size));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&state.d_scanBuffer_pointID), scanBuffer_size));
+
+    CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(state.d_scanBuffer), scanBuffer.data(), scanBuffer_size, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(reinterpret_cast<void *>(state.d_scanBuffer_pointID), scanBuffer_pointID.data(), scanBuffer_size, cudaMemcpyHostToDevice));
 }
 
-void launch(OctoMapRTState &state, sutil::CUDAOutputBuffer<uint> &output_voxel, uint numVoxel, uint width, uint height) {
+void OctomapRT::launch(uint width, uint height) {
     CUstream stream = 0;
     CUDA_CHECK(cudaStreamCreate(&stream));
-    CUDA_CHECK(cudaMemset(output_voxel.map(), 0, numVoxel * sizeof(uint)));
+    CUDA_CHECK(cudaMemset(output_voxel->map(), 0, state.numVoxel * sizeof(uint)));
 
-    state.params.voxel = output_voxel.map();
+    state.params.voxel = output_voxel->map();
     state.params.scanBuffer = state.d_scanBuffer;                 // ray endpoint
     state.params.scanBuffer_pointID = state.d_scanBuffer_pointID; // occupied voxel id
 
@@ -630,17 +682,17 @@ void launch(OctoMapRTState &state, sutil::CUDAOutputBuffer<uint> &output_voxel, 
     CUDA_SYNC_CHECK();
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    output_voxel.unmap();
+    output_voxel->unmap();
     CUDA_CHECK(cudaFree(reinterpret_cast<void *>(d_param)));
 }
 
-void readback(OctoMapRTState &state, sutil::CUDAOutputBuffer<uint> &output_voxel) {
-    state.hostData_voxel = output_voxel.getHostPointer();
+void OctomapRT::readback() {
+    state.hostData_voxel = output_voxel->getHostPointer();
 }
 
-void treeUpdate(OctoMapRTState &state, uint &numVoxel, octomap::ScanGraph::iterator &scan_it) {
+void OctomapRT::treeUpdate(ScanGraph::iterator& scan_it) {
     // read 2 bits
-    for (uint c = 0; c < numVoxel; c++) {
+    for (uint c = 0; c < state.numVoxel; c++) {
         bool lazy_eval = false;
         uint i = state.hostData_voxel[c]; // 32bit
 
@@ -669,7 +721,9 @@ void treeUpdate(OctoMapRTState &state, uint &numVoxel, octomap::ScanGraph::itera
     }
 }
 
-void cleanup(OctoMapRTState &state) {
+void OctomapRT::cleanup() {
+    output_voxel.reset();
+
     CUDA_CHECK(cudaFree(reinterpret_cast<void *>(state.sbt.raygenRecord)));
     CUDA_CHECK(cudaFree(reinterpret_cast<void *>(state.sbt.missRecordBase)));
     CUDA_CHECK(cudaFree(reinterpret_cast<void *>(state.sbt.hitgroupRecordBase)));
@@ -683,96 +737,4 @@ void cleanup(OctoMapRTState &state) {
     OPTIX_CHECK(optixDeviceContextDestroy(state.context));
 
     delete state.map.tree;
-}
-
-int main(int argc, char *argv[]) {
-    try
-    {
-        timeval start;
-        timeval stop;
-
-        // default values:
-        double res = 0.1;
-        std::string graphFilename = "";
-        std::string treeFilename = "";
-        double maxrange = -1;
-
-        // get default sensor model values:
-        OcTree emptyTree(0.1);
-        double clampingMin = emptyTree.getClampingThresMin();
-        double clampingMax = emptyTree.getClampingThresMax();
-        double probMiss = emptyTree.getProbMiss();
-        double probHit = emptyTree.getProbHit();
-
-        int arg = 0;
-        while (++arg < argc) {
-            if (!strcmp(argv[arg], "-i"))
-                graphFilename = std::string(argv[++arg]);
-            else if (!strcmp(argv[arg], "-o"))
-                treeFilename = std::string(argv[++arg]);
-            else if (!strcmp(argv[arg], "-res") && argc - arg < 2)
-                printUsage(argv[0]);
-            else if (!strcmp(argv[arg], "-res"))
-                res = atof(argv[++arg]);
-            else if (!strcmp(argv[arg], "-m"))
-                maxrange = atof(argv[++arg]);
-            else {
-                printUsage(argv[0]);
-            }
-        }
-
-        std::string treeFilenameOT = treeFilename + ".ot";
-        std::string treeFilenameBT = treeFilename + ".bt";
-
-        ScanGraph *graph = new ScanGraph();
-        if (!graph->readBinary(graphFilename)) {
-            std::cout << "error. no input file." << std::endl;
-            exit(2);
-        }
-
-        OctoMapRTState state;
-        state.map.tree = new OcTree(res);
-        state.map.tree->setClampingThresMin(clampingMin);
-        state.map.tree->setClampingThresMax(clampingMax);
-        state.map.tree->setProbHit(probHit);
-        state.map.tree->setProbMiss(probMiss);
-
-        gettimeofday(&start, NULL);
-
-        initAABB(state, graph, res, maxrange);
-        initCUDAOptix(state);
-        bottomLevelAS(state);
-        topLevelAS(state, res * 0.5);
-        createModule(state);
-        createProgramGroups(state);
-        linkPipeline(state);
-        shaderBindingTable(state);
-
-        uint numVoxel = (state.map.totalAabb) / 16 + 1;
-        sutil::CUDAOutputBuffer<uint> output_voxel(sutil::CUDAOutputBufferType::CUDA_DEVICE, numVoxel, 1);
-
-        size_t m_currentScan = 1;
-        for (ScanGraph::iterator scan_it = graph->begin(); scan_it != graph->end(); scan_it++) {
-            initScan(state, scan_it);
-            launch(state, output_voxel, numVoxel, (*scan_it)->scan->size(), 1);
-            readback(state, output_voxel);
-            treeUpdate(state, numVoxel, scan_it);
-
-            m_currentScan++;
-        }
-        CUDA_SYNC_CHECK();
-
-        gettimeofday(&stop, NULL);
-        double time_to_buildMap = (stop.tv_sec - start.tv_sec) + 1.0e-6 * (stop.tv_usec - start.tv_usec);
-        std::cout << "time to build map: " << time_to_buildMap << " sec" << std::endl;
-
-        state.map.tree->write(treeFilenameOT);
-        state.map.tree->writeBinary(treeFilenameBT);
-
-        cleanup(state);
-    } catch (std::exception &e) {
-        std::cerr << "Caught exception: " << e.what() << "\n";
-        return 1;
-    }
-    return 0;
 }

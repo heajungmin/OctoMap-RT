@@ -1,0 +1,53 @@
+# Copyright 2024 The Ewha Womans University.
+# All Rights Reserved.
+#
+# Permission to use, copy, modify OR distribute this software and its
+# documentation for educational, research and non-profit purposes, without
+# fee, and without a written agreement is hereby granted, provided that the
+# above copyright notice and the following three paragraphs appear in all
+# copies.
+#
+# IN NO EVENT SHALL THE EWHA WOMANS UNIVERSITY BE
+# LIABLE TO ANY PARTY FOR DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR
+# CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING OUT OF THE
+# USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF THE EWHA WOMANS UNIVERSITY
+# HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+#
+# THE EWHA WOMANS UNIVERSITY SPECIFICALLY DISCLAIM ANY
+# WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE SOFTWARE
+# PROVIDED HEREUNDER IS ON AN "AS IS" BASIS, AND THE EWHA WOMANS UNIVERSITY
+# HAS NO OBLIGATIONS TO PROVIDE MAINTENANCE, SUPPORT,
+# UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+#
+#
+# The authors may be contacted via:
+#
+# Mail:        Heajung Min, Kyung Min Han, and Young J. Kim
+#              Computer Graphics Lab                       
+#              Department of Computer Science and Engineering
+#              Ewha Womans University
+#              11-1 Daehyun-Dong Seodaemun-gu, Seoul, Korea 120-750
+#
+# Phone:       +82-2-3277-6798
+#
+# EMail:       hjmin@ewha.ac.kr
+#              hankm@ewha.ac.kr
+#              kimy@ewha.ac.kr
+
+
+include_directories(~/Downloads/octomap/octomap/include)
+link_directories(~/Downloads/octomap/lib)
+
+
+OPTIX_add_sample_executable(octomapRT_example target_name
+    octomapRT_example.cpp                  
+    OPTIONS -rdc true
+)
+
+target_link_libraries(${target_name}
+    ${CUDA_LIBRARIES}
+    octomap
+    octomath    
+    octomapRT
+)

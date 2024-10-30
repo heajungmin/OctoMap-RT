@@ -40,7 +40,6 @@
 #include <optix.h>
 
 #include "octomapRT.h"
-#include <cuda/helpers.h>
 
 #include <sutil/vec_math.h>
 

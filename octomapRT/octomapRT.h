@@ -37,6 +37,12 @@
  *              kimy@ewha.ac.kr
  */
 
+#ifndef OCTOMAP_RT_H
+#define OCTOMAP_RT_H
+
+#include <sutil/sutil.h>
+#include <optix_types.h>
+
 #include <octomap/octomap_timing.h>
 #include <octomap/octomap.h>
 
@@ -49,7 +55,10 @@
 #include <cstdlib> 
 #include <sstream>
 
-#define AABBS_LEVEL 1 
+using namespace octomap;
+using namespace octomath;
+
+#define AABBS_LEVEL 1
 
 template<typename T>
 struct Vec3 {
@@ -70,14 +79,14 @@ struct InstanceUnit {
     double unitSize = 0.0;
 };
 
-struct Params {    	
+struct Params {
     OptixTraversableHandle handle = 0;
-    uint* voxel = nullptr;	
-    CUdeviceptr scanBuffer = 0; 
-    CUdeviceptr scanBuffer_pointID = 0; 
-    uint aabbs_one_instance = 0; 
+    uint* voxel = nullptr;
+    CUdeviceptr scanBuffer = 0;
+    CUdeviceptr scanBuffer_pointID = 0;
+    uint aabbs_one_instance = 0;
     uint numXxnumY = 0;
-    uint aabbNumPerAxis = 0; 
+    uint aabbNumPerAxis = 0;
     uint numInstanceX = 0;
     float3 cameraPosition = {};
 };
@@ -86,31 +95,11 @@ struct Map {
     octomap::OcTree* tree = nullptr;
     uint totalAabb = 0;
     std::vector<OptixAabb> aabbs;
-    std::vector<octomap::OcTreeKey> point_key;	
+    std::vector<octomap::OcTreeKey> point_key;
     std::unordered_map<octomap::ScanNode*, Step> adjustStep;
-    octomap::OcTreeKey key_origin = {}; 
+    octomap::OcTreeKey key_origin = {};
     NumInstance numInstance = {};
     InstanceUnit unit = {};
-};
-
-struct OctoMapRTState {
-	OptixDeviceContext context = 0;
-	OptixTraversableHandle gas_handle = 0;    
-	OptixProgramGroup raygen_prog_group = 0;
-	OptixProgramGroup miss_prog_group = 0;
-	OptixProgramGroup hitgroup_prog_group = 0;
-	CUdeviceptr d_gas_output_buffer = 0;
-	OptixPipeline pipeline = 0;
-	OptixModule module = 0;
-	OptixShaderBindingTable sbt = {};	
-	OptixPipelineCompileOptions pipeline_compile_options = {};
-	
-	CUdeviceptr d_scanBuffer = 0;
-	CUdeviceptr d_scanBuffer_pointID = 0;
-	uint* hostData_voxel = 0;
-	
-	Params params = {};
-	Map map = {};
 };
 
 struct RayGenData {};
@@ -118,7 +107,7 @@ struct MissData {};
 struct HitGroupData {};
 
 class RTPointcloud : public octomap::Pointcloud {
-public:			
+public:
     inline octomap::point3d& getPoint(unsigned int i) {
         if (i < points.size())
             return points[i];
@@ -134,6 +123,43 @@ public:
                 points[i] = points[i].normalized() * static_cast<float>(maxRange);
             }
             points[i] = transform.transform(points[i]);
-        }	  
-    } 	
+        }
+    }
 };
+
+class OctomapRT {
+public:
+    OctomapRT(double res, double maxRange, double clampingMin, double clampingMax, double probHit, double probMiss);
+    ~OctomapRT();
+
+    void initialize(ScanGraph* graph);
+    void insertPointCloud(ScanGraph::iterator scan_it);
+    void cleanup();
+
+    OcTree* getTree() const;    
+    void sync();
+
+private:
+    void initAABB(ScanGraph* graph);
+    void initCUDAOptix();
+    void bottomLevelAS();
+    void topLevelAS();
+    void createModule();
+    void createProgramGroups();
+    void linkPipeline();
+    void shaderBindingTable();
+
+    void initScan(ScanGraph::iterator& scan_it);
+    void launch(uint width, uint height);
+    void readback();
+    void treeUpdate(ScanGraph::iterator& scan_it);    
+
+    double res;
+    double maxRange;
+    double clampingMin;
+    double clampingMax;
+    double probHit;
+    double probMiss;
+};
+
+#endif

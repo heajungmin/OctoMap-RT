@@ -34,20 +34,63 @@
 # EMail:       hjmin@ewha.ac.kr
 #              hankm@ewha.ac.kr
 #              kimy@ewha.ac.kr
-                 :
 
-include_directories((your_path)/octomap/octomap/include)
-link_directories((your_path)/octomap/lib)
+cmake_minimum_required(VERSION 3.7)
+project(octomapRT)
 
-OPTIX_add_sample_executable( OctoMap-RT target_name
-  octomapRT.cu
-  octomapRT.cpp
+set(SAMPLES_PTX_DIR "${CMAKE_BINARY_DIR}/lib/ptx")
+set(SAMPLES_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+set(CUDA_GENERATED_OUTPUT_DIR ${SAMPLES_PTX_DIR})
+set(SAMPLES_CUDA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cuda")
+
+include_directories(
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CUDA_INCLUDE_DIRS}
+  ~/Downloads/octomap/octomap/include
+)
+
+link_directories(~/Downloads/octomap/lib)
+
+set(SAMPLES_ABSOLUTE_INCLUDE_DIRS "\"${OptiX_INCLUDE}\", \"${CUDA_INCLUDE_DIRS}\", ")
+
+macro(OPTIX_octomapRT_compile_to_optix_input generated_files)
+  if(NOT CUDA_NVRTC_ENABLED)
+    if(SAMPLES_INPUT_GENERATE_OPTIXIR)
+      message("octomapRT OPTIXIR")
+      CUDA_WRAP_SRCS(octomapRT OPTIXIR generated_files2 ${ARGN})
+      list(APPEND ${generated_files} ${generated_files2})
+    endif()
+    if(SAMPLES_INPUT_GENERATE_PTX)
+      message("octomapRT PTX")
+      CUDA_WRAP_SRCS(octomapRT PTX generated_files3 ${ARGN})
+      list(APPEND ${generated_files} ${generated_files3})
+    endif()
+  endif()
+endmacro()
+
+set(sources
+  octomapRT.cu 
+  octomapRT.cpp 
   octomapRT.h
-  OPTIONS -rdc true
-  )
+)
 
-target_link_libraries( ${target_name}
+if(NOT CUDA_NVRTC_ENABLED)
+  OPTIX_octomapRT_compile_to_optix_input(ptx_files ${sources})
+else()
+  set(ptx_files)
+endif()
+
+add_library(octomapRT SHARED ${sources} ${ptx_files})
+
+target_link_libraries(octomapRT LINK_PRIVATE
+  ${GLFW_LIB_NAME}
+  glad
+  imgui
   ${CUDA_LIBRARIES}
   octomap
   octomath
-  )
+  sutil_7_sdk
+)
+
+set_property(TARGET octomapRT PROPERTY FOLDER "${OPTIX_IDE_FOLDER}")
+
