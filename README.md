@@ -5,7 +5,7 @@ Please visit the [project page](http://graphics.ewha.ac.kr/octomap-rt/) for more
 
 
 ## Usage
-This project is developed based on Ubuntu 20.04, OctoMap 1.10.0, and Optix SDK 8.0.0.
+This project has dependencies on Ubuntu 20.04, OctoMap 1.10.0, and OptiX SDK 8.0.0
 
 1. To build the OctoMap library, please follow the instructions in [OctoMap](https://github.com/OctoMap/octomap).
 
