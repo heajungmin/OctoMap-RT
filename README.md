@@ -9,7 +9,7 @@ This project has dependencies on Ubuntu 20.04, OctoMap 1.10.0, and OptiX SDK 8.0
 
 1. To build the OctoMap library, please follow the instructions in [OctoMap](https://github.com/OctoMap/octomap).
 
-2. To install Optix SDK, please follow the official instructions in [Optix](https://developer.nvidia.com/designworks/optix/download).
+2. To install OptiX SDK, please follow the official instructions in [OptiX](https://developer.nvidia.com/designworks/optix/download).
 ```
 cd ~/Downloads/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK
 cmake .
@@ -18,14 +18,14 @@ make
 
 3. Clone the OctoMap-RT repository
 
-4. Insert the OctoMap-RT into the Optix SDK. You can use the Optix SDK build system and utils.
+4. Insert the OctoMap-RT into the OptiX SDK. You can use the OptiX SDK build system and utils.
   * Add two directories for OctoMap-RT in ~/Downloads/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/CMakeLists.txt
     ```
     add_subdirectory(octomapRT)
     add_subdirectory(octomapRT_example)
     ```   
   
-  * Add the OctoMap-RT code in the Optix SDK directory.
+  * Add the OctoMap-RT code in the OptiX SDK directory.
     ```
     cd ~/Downloads/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64/SDK/
     mv ~/Downloads/OctoMap-RT/octomapRT .
